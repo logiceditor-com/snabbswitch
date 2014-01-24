@@ -19,59 +19,64 @@ local floor, min = math.floor, math.min
 
 RateLimiter = {}
 
-local MS_IN_SECOND = 1000
+-- one tick per ms is too expensive
+-- 100 ms tick is good enough
+local TICKS_PER_SECOND = 10
+local NS_PER_TICK = 1e9 / TICKS_PER_SECOND
 
--- to be called every 1 ms
-local function tick (self)
+
+function RateLimiter.new (rate, bucket_capacity, initial_capacity)
+   assert(rate)
+   assert(bucket_capacity)
+   initial_capacity = initial_capacity or bucket_capacity / 2
+   local o =
+   {
+      tokens_on_tick = rate / TICKS_PER_SECOND,
+      bucket_capacity = bucket_capacity,
+      bucket_content = initial_capacity,
+      tx_packets = 0,
+      rx_packets = 0,
+      ticks = 0
+   }
+   return setmetatable(o, {__index=RateLimiter})
+end
+
+function RateLimiter:reset_stat ()
+	self.tx_packets = 0
+   self.rx_packets = 0
+   self.ticks = 0
+end
+
+function RateLimiter:tick ()
+   self.ticks = self.ticks + 1
    self.bucket_content = min(
          self.bucket_content + self.tokens_on_tick,
          self.bucket_capacity
       )
 end
 
-function RateLimiter:new (rate, bucket_capacity, initial_capacity)
-   assert(rate)
-   assert(bucket_capacity)
-   initial_capacity = initial_capacity or bucket_capacity / 2
-   local o =
-   {
-      tokens_on_tick = rate / MS_IN_SECOND,
-      bucket_capacity = bucket_capacity,
-      bucket_content = initial_capacity,
-      sent_packets = 0,
-      got_packets = 0
-   }
-   return setmetatable(o, {__index=RateLimiter})
-end
-
-function RateLimiter:stat()
-	local sent_packets, got_packets = self.sent_packets, self.got_packets
-	self.sent_packets = 0
-   self.got_packets = 0
-	return sent_packets, got_packets
-end
-
 function RateLimiter:push ()
    local i = assert(self.input.input, "input port not found")
    local o = assert(self.output.output, "output port not found")
 
-   local sent_packets = 0
+   local tx_packets = 0
    local max_packets_to_send = app.nwritable(o)
    if max_packets_to_send == 0 then
       return
    end
 
    local nreadable = app.nreadable(i)
-   for _ = 1, nreadable do
+   for n = 1, nreadable do
       local p = app.receive(i)
       local length = p.length
 
       if length <= self.bucket_content then
          self.bucket_content = self.bucket_content - length
          app.transmit(o, p)
-         sent_packets = sent_packets + 1
+         tx_packets = tx_packets + 1
 
-         if sent_packets == max_packets_to_send then
+         if tx_packets == max_packets_to_send then
+            nreadable = n
             break
          end
       else
@@ -79,8 +84,8 @@ function RateLimiter:push ()
          packet.deref(p)
       end
    end
-   self.got_packets = self.got_packets + nreadable
-   self.sent_packets = self.sent_packets + sent_packets
+   self.rx_packets = self.rx_packets + nreadable
+   self.tx_packets = self.tx_packets + tx_packets
 end
 
 function selftest ()
@@ -101,13 +106,13 @@ function selftest ()
 
    local packets_per_second = rate / PACKET_SIZE
 
-   app.apps.rate_limiter = app.new(RateLimiter:new(rate, bucket_size))
+   app.apps.rate_limiter = app.new(RateLimiter.new(rate, bucket_size))
 
-   -- activate timer to place tokens to bucket every 1 ms
+   -- activate timer to place tokens to bucket every tick
    timer.activate(timer.new(
          "tick",
-         function () tick(app.apps.rate_limiter) end,
-         1e6, -- every ms
+         function () app.apps.rate_limiter:tick() end,
+         NS_PER_TICK,
          'repeating'
       ))
 
@@ -129,19 +134,24 @@ function selftest ()
          timer.run()
       end
       local elapsed_time = tonumber(C.get_time_ns()) - start_time
-      local _, got_packets = app.apps.rate_limiter:stat()
       print(
             "process",
-            math.floor(got_packets / elapsed_time * 1e9),
+            math.floor(app.apps.rate_limiter.rx_packets / elapsed_time * 1e9),
             "packets per second"
          )
    end
 
    do
+      app.apps.rate_limiter:reset_stat()
+
+      local seconds_to_run = 5
       -- print packets statistics every second
       timer.activate(timer.new(
             "report",
-            function () app.report() end,
+            function ()
+               app.report()
+               seconds_to_run = seconds_to_run - 1
+            end,
             1e9, -- every second
             'repeating'
          ))
@@ -150,19 +160,19 @@ function selftest ()
       local start_time = tonumber(C.get_time_ns() / 1e9)
       
       -- push some packets through it
-      for i = 1, 10000 do
+      while seconds_to_run > 0 do
          app.breathe()
          timer.run()    -- get timers chance to fire
-         C.usleep(10)   -- don't do it too fast
+         C.usleep(10)   -- avoid busy loop
       end
-
-      local elapsed_time = tonumber(C.get_time_ns() / 1e9) - start_time
       -- print final report
       app.report()
 
+      local elapsed_time = tonumber(C.get_time_ns() / 1e9) - start_time
+      print("elapsed time:", elapsed_time)
+      print("ticks:", app.apps.rate_limiter.ticks)
 
-      local sent_packets = app.apps.rate_limiter:stat()
-      local effective_rate = floor(sent_packets * PACKET_SIZE / elapsed_time)
+      local effective_rate = floor(app.apps.rate_limiter.tx_packets * PACKET_SIZE / elapsed_time)
       print("configured rate is", rate, "bytes per second")
       print("effective rate is", effective_rate, "bytes per second")
       local accepted_min = floor(rate * 0.9)

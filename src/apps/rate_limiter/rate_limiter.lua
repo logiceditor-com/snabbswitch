@@ -22,6 +22,7 @@ RateLimiter = {}
 local TICKS_PER_SECOND = 10
 
 local function tick (self)
+   self.ticks = self.ticks + 1
    self.bucket_content = min(
          self.bucket_content + self.tokens_on_tick,
          self.bucket_capacity
@@ -44,6 +45,7 @@ end
 function RateLimiter:reset_stat()
    self.packets_tx = 0
    self.packets_rx = 0
+   self.ticks = 0
 end
 
 function RateLimiter:push ()

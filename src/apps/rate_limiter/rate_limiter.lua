@@ -19,9 +19,8 @@ local floor, min = math.floor, math.min
 
 RateLimiter = {}
 
-local MS_IN_SECOND = 1000
+local TICKS_PER_SECOND = 10
 
--- to be called every 1 ms
 local function tick (self)
    self.bucket_content = min(
          self.bucket_content + self.tokens_on_tick,
@@ -35,7 +34,7 @@ function RateLimiter:new (rate, bucket_capacity, initial_capacity)
    initial_capacity = initial_capacity or bucket_capacity / 2
    local o =
    {
-      tokens_on_tick = rate / MS_IN_SECOND,
+      tokens_on_tick = rate / TICKS_PER_SECOND,
       bucket_capacity = bucket_capacity,
       bucket_content = initial_capacity,
       sent_packets = 0,
@@ -107,7 +106,7 @@ function selftest ()
    timer.activate(timer.new(
          "tick",
          function () tick(app.apps.rate_limiter) end,
-         1e6, -- every ms
+         1e9 / TICKS_PER_SECOND,
          'repeating'
       ))
 

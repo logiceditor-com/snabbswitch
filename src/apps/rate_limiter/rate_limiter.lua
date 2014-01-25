@@ -36,13 +36,15 @@ function RateLimiter:new (rate, bucket_capacity, initial_capacity)
    {
       tokens_on_tick = rate / TICKS_PER_SECOND,
       bucket_capacity = bucket_capacity,
-      bucket_content = initial_capacity
+      bucket_content = initial_capacity,
+      packets_tx = 0,
+      packets_rx = 0
     }
    return setmetatable(o, {__index=RateLimiter})
 end
 
 function RateLimiter:reset_stat()
-	self.packets_tx = 0
+   self.packets_tx = 0
    self.packets_rx = 0
 end
 
@@ -116,8 +118,6 @@ function selftest ()
    app.relink()
 
    buffer.preallocate(10000)
-
-   rl:reset_stat()
 
    print("mesure max throughput ...")
    local start_time = tonumber(C.get_time_ns())

@@ -206,12 +206,12 @@ function selftest ()
       rl:reset(rate_busy_loop, bucket_size)
 
       local snapshot = rl:get_stat_snapshot()
-      --require("jit.p").start('vl4')
+      require("jit.p").start('vl4')
       for i = 1, 100000 do
          app.breathe()
          timer.run()
       end
-      --require("jit.p").stop()
+      require("jit.p").stop()
       local elapsed_time =
          (tonumber(C.get_time_ns()) - snapshot.time) / 1e9
       print("elapsed time ", elapsed_time, "seconds")

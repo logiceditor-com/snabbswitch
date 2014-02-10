@@ -153,6 +153,7 @@ function selftest ()
          'repeating'
       ))
 
+--[[
    -- bytes per second
    do
       print("\ntest effective rate, non-busy loop")
@@ -188,6 +189,7 @@ function selftest ()
          ok = false
       end
    end
+]]--
 
    do
       print("measure throughput on heavy load...")

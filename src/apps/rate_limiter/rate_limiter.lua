@@ -35,7 +35,8 @@ function RateLimiter.new (rate, bucket_capacity, initial_capacity)
    {
       tokens_on_tick = rate / TICKS_PER_SECOND,
       bucket_capacity = bucket_capacity,
-      bucket_content = initial_capacity
+      bucket_content = initial_capacity,
+      length = 0,
     }
    return setmetatable(o, {__index=RateLimiter})
 end
@@ -93,6 +94,7 @@ function RateLimiter:push ()
       if length <= self.bucket_content then
          self.bucket_content = self.bucket_content - length
          app.transmit(o, p)
+         self.length = self.length + length
          tx_packets = tx_packets + 1
 
          if tx_packets == max_packets_to_send then
@@ -204,10 +206,12 @@ function selftest ()
       rl:reset(rate_busy_loop, bucket_size)
 
       local snapshot = rl:get_stat_snapshot()
+      --require("jit.p").start('vl4')
       for i = 1, 100000 do
          app.breathe()
          timer.run()
       end
+      --require("jit.p").stop()
       local elapsed_time =
          (tonumber(C.get_time_ns()) - snapshot.time) / 1e9
       print("elapsed time ", elapsed_time, "seconds")

@@ -37,6 +37,8 @@ local IPV6_NEXT_HEADER_OFFSET = 20 -- protocol
 local IPV6_SOURCE_PORT_OFFSET = 0 -- TODO
 local IPV6_DEST_PORT_OFFSET = 0 -- TODO
 
+-- UDP/TCP ports - 16 bits value
+
 -- from https://github.com/lua-nucleo/lua-nucleo
 -- MIT licensed
 local make_concatter = function()
@@ -54,8 +56,6 @@ local make_concatter = function()
  return cat, concat
 end
 
--- UDP/TCP ports - 16 bits value
-
 -- depends from offset used for source/destination adresses matching
 local function generateIpv4CidrMatch(t, cidr, offset)
    local binary = assert(ip.parse_cidr_ipv4(cidr))
@@ -65,24 +65,25 @@ local function generateIpv4CidrMatch(t, cidr, offset)
       return
    end
 
-   t("local p = ffi.cast(\"uint32_t*\", buffer + " .. offset .. ")")
+   t("   local p = ffi.cast(\"uint32_t*\", buffer + " .. offset .. ")")
    if not binary.mask then
       -- single IP address
-      t("if p[0] == " .. binary[1] .. "then break end")
+      t("   if p[0] == " .. binary[1] .. "then break end")
    else
-      t("local result = bit.bor(bit.band(" .. binary.mask .. ", p[0]), " .. binary.prefix .. ")")
-      t"if result == 0 then break end"
+      t("   local result = bit.bor(bit.band(" .. binary.mask .. ", p[0]), " .. binary.prefix .. ")")
+      t"   if result == 0 then break end"
    end
 end
 
 local function generateIpv4ProtocolMatch(t, protocol)
-   t("local protocol = buffer[" .. IPV4_PROTOCOL_OFFSET .. "]")
-   t("if protocol ~= " .. protocol .. " then break end")
+   t("   local protocol = buffer[" .. IPV4_PROTOCOL_OFFSET .. "]")
+   t("   if protocol ~= " .. protocol .. " then break end")
 end
 
 local function generateIpv4PortMatch(t, offset, port_min, port_max)
-   t("local port = buffer[" .. offset .. "]")
-   t("if port < " .. port_min .. " or port > " .. port_max .. " then break end")
+   t("   local offset = " .. offset)
+   t("   local port = buffer[offset] * 0xFFFF + buffer[offset + 1]")
+   t("   if port < " .. port_min .. " or port > " .. port_max .. " then break end")
 end
 
 local function generateIpv4Rule(t, rule)
@@ -128,7 +129,7 @@ local function generateIpv4Rule(t, rule)
          end
       end
    end
-   t"return true"
+   t"   return true"
    t"until false"
 end
 
@@ -137,6 +138,8 @@ end
 
 local function generateConformFunctionString(rules)
    local t, concatter = make_concatter()
+   t"local ffi = require(\"ffi\")"
+   t"local bit = require(\"bit\")"
    t"return function(buffer, size)"
 
    for i = 1, #rules do

@@ -70,8 +70,8 @@ end
 
 -- IP prefix data structure, Lua table
 -- array part - uint32_t values to match exactly, mandatory if mask/prefix are missed
--- mask - last byte mask, mandatory if array part is empty
--- prefix - last byte prefix, mandatory if array part is empty
+-- mask - last uint32_t mask, mandatory if array part is empty
+-- prefix - last uint32_t prefix, mandatory if array part is empty
 -- for IPv4 only one component may be present
 -- for IPv6 every alone and both allowed
 -- all values in network order

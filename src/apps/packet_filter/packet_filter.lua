@@ -16,8 +16,9 @@ function isBigEndian ()
 end
 
 assert(isBigEndian(), "little-endian platform not supported")
-ETHERTYPE_IPV6 = 0xDD86
-ETHERTYPE_IPV4 = 0x0080
+-- in network order already
+ETHERTYPE_IPV6 = "0xDD86"
+ETHERTYPE_IPV4 = "0x0080"
 
 local IP_UDP = 17
 local IP_TCP = 6
@@ -56,57 +57,56 @@ end
 
 -- used for source/destination adresses matching
 local function generateIpv4CidrMatch(t, cidr, offset)
-   local binary = assert(ip.parse_cidr_ipv4(cidr))
+   local ok, prefix, mask = assert(ip.parse_cidr_ipv4(cidr))
 
-   if #binary == 0 and not binary.mask then
+   if not prefix then
       -- any address
       return
    end
 
+   prefix = string.format("%x", prefix)
    t("   local p = ffi.cast(\"uint32_t*\", buffer + " .. offset .. ")")
-   if not binary.mask then
-      assert(binary[1])
-      -- single IP address
-      t("   if p[0] ~= " .. binary[1] .. "then break end")
-   else
-      t("   local result = bit.bor(bit.band(" .. binary.mask .. ", p[0]), " .. binary.prefix .. ")")
+   if mask then
+      t("   local result = bit.bor(bit.band(" .. mask .. ", p[0]), 0x" .. prefix .. ")")
       t"   if result == 0 then break end"
+   else
+      -- single IP address
+      t("   if p[0] ~= 0x" .. prefix .. " then break end")
    end
 end
 
 -- used for source/destination adresses matching
-local function generateIpv5CidrMatch(t, cidr, offset)
-   local binary = assert(ip.parse_cidr_ipv6(cidr))
+local function generateIpv6CidrMatch(t, cidr, offset)
+   local ok, prefix1, prefix2, mask = assert(ip.parse_cidr_ipv6(cidr))
 
-   if #binary == 0 and not binary.mask then
+   if not prefix1 then
       -- any address
       return
    end
 
-   local index = 0
-   t("   local p = ffi.cast(\"uint32_t*\", buffer + " .. offset .. ")")
-   if binary[1] then
-      t("   if p[0] ~= " .. binary[1] .. "then break end")
-      index = index  + 1
-      if binary[2] then
-         t("   if p[1] ~= " .. binary[2] .. "then break end")
-         index = index  + 1
-         if binary[3] then
-            t("   if p[2] ~= " .. binary[3] .. "then break end")
-            index = index  + 1
-            if binary[4] then
-               t("   if p[3] ~= " .. binary[4] .. "then break end")
-            end
-         end
-      end
-   end
-   if binary.mask then
-      assert(binary.prefix)
-      assert(#binary < 4)
-      t("   local result = bit.bor(bit.band(" .. binary.mask ..
-        ", p[" .. index .. "]), " .. binary.prefix .. ")")
+   t("   local p = ffi.cast(\"uint64_t*\", buffer + " .. offset .. ")")
+
+   if not prefix2 and mask then
+      t("   local result = bit.bor(bit.band(0x" .. bit.tohex(mask) ..
+        "ULL, p[0]), 0x" .. bit.tohex(prefix1) .. "ULL)")
       t"   if result == 0 then break end"
+      return
    end
+
+   t("   if p[0] ~= 0x" .. bit.tohex(prefix1) .. "ULL  then break end")
+   if not prefix2 and not mask then
+      return
+   end
+
+   if prefix2 and not mask then
+      t("   if p[1] ~= 0x" .. bit.tohex(prefix2) .. "ULL  then break end")
+      return
+   end
+
+   -- prefix1 and prefix2 and mask
+   t("   local result = bit.bor(bit.band(0x" .. bit.tohex(mask) ..
+     "ULL, p[0]), 0x" .. bit.tohex(prefix1) .. "ULL)")
+   t"   if result == 0 then break end"
 end
 
 local function generateProtocolMatch(t, protocol, offset)
@@ -124,7 +124,7 @@ local function generatePortMatch(t, offset, port_min, port_max)
       -- TODO: generalize htons()
 
       t("   local p = ffi.cast(\"uint16_t*\", buffer + " .. offset .. ")")
-      t("   if p[0] ~= " .. port_network_order .. "then break end")
+      t("   if p[0] ~= " .. port_network_order .. " then break end")
    end
    t("   local offset = " .. offset)
    t("   local port = buffer[offset] * 0xFFFF + buffer[offset + 1]")
@@ -142,6 +142,19 @@ local function generateRule(
       dest_port_offset
    )
    t"repeat"
+
+   assert(rule.ethertype)
+   t("   local p = ffi.cast(\"uint16_t*\", buffer + " .. ETHERTYPE_OFFSET .. ")")
+   local ethertype
+   if rule.ethertype == "ipv4" then
+      ethertype = ETHERTYPE_IPV4
+   elseif rule.ethertype == "ipv6" then
+      ethertype = ETHERTYPE_IPV6
+   else
+      error("unknown ethertype")
+   end
+   t("   if p[0] ~= " .. ethertype .. " then break end")
+   
    if rule.source_cidr then
       generateIpMatch(t, rule.source_cidr, source_ip_offset)
    end
@@ -235,7 +248,7 @@ function PacketFilter:new (rules)
       tokens_on_tick = rate / TICKS_PER_SECOND,
       bucket_capacity = bucket_capacity,
       bucket_content = initial_capacity,
-      conform = loadstring(generateConformFunctionString(rules))
+      conform = assert(loadstring(generateConformFunctionString(rules)))
     }
    return setmetatable(o, {__index = PacketFilter})
 end
@@ -263,10 +276,6 @@ function PacketFilter:push ()
          packet.deref(p)
       end
    end
-end
-
-function PacketFilter:process (packet)
-   
 end
 
 function selftest1 ()
@@ -388,18 +397,50 @@ function selftest()
    local fstring = generateConformFunctionString
    {
       {
-         ethertype = "ipv4",
-         source_cidr = "12.23.34.45/12",
+         ethertype = "ipv6",
+         source_cidr = "ffff:0:ffff:0:0:0:0:8/34",
          protocol = "tcp",
          dest_port_min = 80,
          dest_port_max = 81,
       },
       {
-         ethertype = "ipv4",
+         ethertype = "ipv6",
+         source_cidr = "ffff:0:ffff:0:0:0:0:8/64",
          protocol = "udp",
+         dest_port_min = 80,
+         dest_port_max = 80,
+      },
+      {
+         ethertype = "ipv6",
+         source_cidr = "ffff:0:ffff:0:ffff:0:0:8/100",
+      },
+      {
+         ethertype = "ipv6",
+         source_cidr = "ffff:0:ffff:0:ffff:0:0:8/128",
+      },
+      {
+         ethertype = "ipv4",
+         source_cidr = "1.2.3.4/10",
+      },
+      {
+         ethertype = "ipv4",
+         source_cidr = "1.2.3.4/32",
       }
    }
    print(fstring)
    local chunk = loadstring(fstring)
    local conform = assert(chunk())
+
+   local ok, prefix, mask = ip.parse_cidr_ipv4("1.2.3.4/12")
+   print(prefix, mask)
+   print(bit.tohex(prefix), bit.tohex(mask))
+
+   local ok, p1, p2, mask = ip.parse_cidr_ipv6("0:0:0:0:0:0:0:0/12")
+   print(tostring(p1), tostring(p2), tostring(mask))
+   print(bit.tohex(p1), bit.tohex(mask))
+   
+-- local binary = ip.parse_cidr_ipv6("1:0:0:0:0:0:0:8/34")
+-- local binary = ip.parse_cidr_ipv6("1::8/120")
+
+
 end

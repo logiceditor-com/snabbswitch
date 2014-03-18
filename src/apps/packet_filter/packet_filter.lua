@@ -4,9 +4,11 @@ local ffi = require("ffi")
 local bit = require("bit")
 
 local app = require("core.app")
+local link = require("core.link")
 local lib = require("core.lib")
 local packet = require("core.packet")
 local buffer = require("core.buffer")
+local config = require("core.config")
 
 local pcap = require("apps.pcap.pcap")
 local basic_apps = require("apps.basic.basic_apps")
@@ -353,7 +355,8 @@ end
 
 PacketFilter = {}
 
-function PacketFilter:new (rules)
+function PacketFilter:new (confstring)
+   local rules = confstring and loadstring("return " .. confstring)() or {}
    assert(rules)
    assert(#rules > 0)
 
@@ -371,14 +374,14 @@ function PacketFilter:push ()
    local o = assert(self.output.output, "output port not found")
 
    local packets_tx = 0
-   local max_packets_to_send = app.nwritable(o)
+   local max_packets_to_send = link.nwritable(o)
    if max_packets_to_send == 0 then
       return
    end
 
-   local nreadable = app.nreadable(i)
+   local nreadable = link.nreadable(i)
    for n = 1, nreadable do
-      local p = app.receive(i)
+      local p = link.receive(i)
       -- TODO: test min packet size
       -- support only one iovec
 
@@ -387,7 +390,7 @@ function PacketFilter:push ()
             p.iovecs[0].length
          )
       then
-         app.transmit(o, p)
+         link.transmit(o, p)
       else
          -- discard packet
          packet.deref(p)
@@ -400,17 +403,17 @@ function selftest ()
    verbose = true
 
    local V6_RULE_ICMP_PACKETS = 3 -- packets within v6.pcap
-   local v6_rule_icmp =
+   local V6_RULE_DNS_PACKETS =  3 -- packets within v6.pcap
+      
+   local v6_rules = [[
+{
    {
       ethertype = "ipv6",
       protocol = "icmp",
       source_cidr = "3ffe:501:0:1001::2/128", -- single IP, match 128bit
       dest_cidr =
          "3ffe:507:0:1:200:86ff:fe05:8000/116", -- match first 64bit and mask next 52 bit
-   }
-
-   local V6_RULE_DNS_PACKETS = 3 -- packets within v6.pcap
-   local v6_rule_dns =
+   },
    {
       ethertype = "ipv6",
       protocol = "udp",
@@ -421,28 +424,36 @@ function selftest ()
       dest_port_min = 53,     -- single port match
       dest_port_max = 53,
    }
+}
+]]
 
-   app.apps.source1 =
-      app.new(pcap.PcapReader:new("apps/packet_filter/samples/v6.pcap"))
-   app.apps.packet_filter1  =
-      app.new(PacketFilter:new({v6_rule_icmp, v6_rule_dns}))
-   app.apps.sink1 = app.new(basic_apps.Sink:new())
-   app.connect("source1", "output", "packet_filter1", "input")
-   app.connect("packet_filter1", "output", "sink1", "input")
-   app.relink()
-   app.breathe() -- v6.pcap contains 161 packets, one breathe is enough
+   local c = config.new()
+   config.app(
+         c,
+         "source1",
+         pcap.PcapReader,
+         "apps/packet_filter/samples/v6.pcap"
+      )
+   config.app(c,
+         "packet_filter1",
+         PacketFilter,
+         v6_rules
+      )
+   config.app(c, "sink1", basic_apps.Sink )
+   config.link(c, "source1.output -> packet_filter1.input")
+   config.link(c, "packet_filter1.output -> sink1.input")
 
    local V4_RULE_DNS_PACKETS = 1 -- packets within v4.pcap
-   local v4_rule_dns =
+   local V4_RULE_TCP_PACKETS = 18 -- packets within v4.pcap
+
+   local v4_rules = [[
+{
    {
       ethertype = "ipv4",
       protocol = "udp",
-      dest_port_min = 53,     -- single port match
+      dest_port_min = 53,     -- single port match, DNS
       dest_port_max = 53,
-   }
-
-   local V4_RULE_TCP_PACKETS = 18 -- packets within v4.pcap
-   local v4_rule_tcp =
+   },
    {
       ethertype = "ipv4",
       protocol = "tcp",
@@ -453,23 +464,37 @@ function selftest ()
       dest_port_min = 3371, -- our port (3372) is in the middle of range
       dest_port_max = 3373,
    }
+}
+]]
 
-   app.apps.source2 =
-      app.new(pcap.PcapReader:new("apps/packet_filter/samples/v4.pcap"))
-   app.apps.packet_filter2 =
-      app.new(PacketFilter:new({v4_rule_dns, v4_rule_tcp}))
-   app.apps.sink2 = app.new(basic_apps.Sink:new())
-   app.connect("source2", "output", "packet_filter2", "input")
-   app.connect("packet_filter2", "output", "sink2", "input")
-   app.relink()
-   app.breathe() -- v4.pcap contains 43 packets, one breathe is enough
+   config.app(
+         c,
+         "source2",
+         pcap.PcapReader,
+         "apps/packet_filter/samples/v4.pcap"
+      )
+   config.app(c,
+         "packet_filter2",
+         PacketFilter,
+         v4_rules
+      )
+   config.app(c, "sink2", basic_apps.Sink )
+   config.link(c, "source2.output -> packet_filter2.input")
+   config.link(c, "packet_filter2.output -> sink2.input")
+
+   app.configure(c)
+
+   -- v4.pcap contains 43 packets
+   -- v6.pcap contains 161 packets
+   -- one breathe is enough
+   app.breathe() 
 
    app.report()
 
    local packet_filter1_passed =
-      app.apps.packet_filter1.output.output.ring.stats.tx
+      app.app_table.packet_filter1.output.output.stats.txpackets
    local packet_filter2_passed =
-      app.apps.packet_filter2.output.output.ring.stats.tx
+      app.app_table.packet_filter2.output.output.stats.txpackets
    local ok = true
 
    if packet_filter1_passed ~= V6_RULE_ICMP_PACKETS + V6_RULE_DNS_PACKETS

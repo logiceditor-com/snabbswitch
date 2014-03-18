@@ -53,6 +53,9 @@ local IPV6_NEXT_HEADER_OFFSET = 20 -- protocol
 local IPV6_SOURCE_PORT_OFFSET = 54
 local IPV6_DEST_PORT_OFFSET = 56
 
+--local IPV4_MIN_HEADER = 34
+--local IPV6_MIN_HEADER = 54
+
 local make_code_concatter
 do
    local mt = { }
@@ -251,13 +254,17 @@ local function generateRule(
    assert(rule.ethertype)
    T("local ethertype = ffi.cast(\"uint16_t*\", buffer + ",ETHERTYPE_OFFSET,")")
    local ethertype
+   --local min_header_size
    if rule.ethertype == "ipv4" then
       ethertype = ETHERTYPE_IPV4
+      --min_header_size = IPV4_MIN_HEADER
    elseif rule.ethertype == "ipv6" then
       ethertype = ETHERTYPE_IPV6
+      --min_header_size = IPV6_MIN_HEADER
    else
       error("unknown ethertype")
    end
+   --T("if size < ",min_header_size,"then break end")
    T("if ethertype[0] ~= ",ethertype," then break end")
 
    if rule.source_cidr then
@@ -382,8 +389,7 @@ function PacketFilter:push ()
    local nreadable = link.nreadable(i)
    for n = 1, nreadable do
       local p = link.receive(i)
-      -- TODO: test min packet size
-      -- support only one iovec
+      -- support the whole IP header in one iovec at the moment
 
       if self.conform(
             p.iovecs[0].buffer.pointer + p.iovecs[0].offset,
@@ -401,6 +407,7 @@ end
 function selftest ()
    -- enable verbose logging for selftest
    verbose = true
+   buffer.preallocate(10000)
 
    local V6_RULE_ICMP_PACKETS = 3 -- packets within v6.pcap
    local V6_RULE_DNS_PACKETS =  3 -- packets within v6.pcap

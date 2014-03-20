@@ -11,7 +11,7 @@ local basic_apps = require("apps.basic.basic_apps")
 local packet_filter = require("apps.packet_filter.packet_filter")
 
 function selftest ()
-   buffer.preallocate(10000)
+   buffer.preallocate(100000)
 
    local v6_rules = [[
 {
@@ -42,7 +42,7 @@ function selftest ()
          pcap.PcapReader,
          "apps/packet_filter/samples/v6.pcap"
       )
-   --config.app(c, "repeater", basic_apps.Repeater )
+   config.app(c, "repeater", basic_apps.Repeater )
    config.app(c,
          "packet_filter",
          packet_filter.PacketFilter,
@@ -50,9 +50,9 @@ function selftest ()
       )
    config.app(c, "sink", basic_apps.Sink )
 
-   --config.link(c, "source.output -> repeater.input")
-   --config.link(c, "repeater.output -> packet_filter.input")
-   config.link(c, "source.output -> packet_filter.input")
+   config.link(c, "source.output -> repeater.input")
+   config.link(c, "repeater.output -> packet_filter.input")
+   --config.link(c, "source.output -> packet_filter.input")
    config.link(c, "packet_filter.output -> sink.input")
    app.configure(c)
 
@@ -60,6 +60,7 @@ function selftest ()
 
    local deadline = lib.timer(1e9)
    repeat app.breathe() until deadline()
+   --app.breathe()
    
    print("done\n")
 

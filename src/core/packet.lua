@@ -40,6 +40,23 @@ function add_iovec (p, b, length,  offset)
    p.length = p.length + length
 end
 
+-- insert data to beginning of a packet.
+function insert_iovec (p, b, length,  offset)
+   if debug then assert(p.niovecs < C.PACKET_IOVEC_MAX, "packet iovec overflow") end
+   offset = offset or 0
+   if debug then assert(length + offset <= b.size) end
+   for i = 1, p.niovecs do
+      p.iovecs[i] = p.iovecs[i - 1]
+   end
+   local iovec = p.iovecs[0]
+   iovec.buffer = b
+   iovec.length = length
+   iovec.offset = offset
+   p.niovecs = p.niovecs + 1
+   p.length = p.length + length
+end
+
+
 -- Increase the reference count for packet p by n (default n=1).
 function ref (p,  n)
    if p.refcount > 0 then
@@ -76,6 +93,26 @@ function free (p)
    p.refcount       = 1
    p.fuel           = initial_fuel
    freelist.add(packets_fl, p)
+end
+
+function want_modify (p)
+   if p.refcount == 1 then
+      return p
+   end
+   local new_p = allocate()
+   for i = 0, p.niovecs - 1 do
+      local new_b = buffer.allocate()
+      local iovec = p.iovecs[i]
+      ffi.copy(
+            new_b.pointer,
+            iovec.buffer.pointer + iovec.offset,
+            iovec.length
+         )
+      add_iovec(new_p, new_b, iovec.length)
+   end
+   -- allow other app to be the only owner
+   packet.deref(p)
+   return new_p
 end
 
 module_init()

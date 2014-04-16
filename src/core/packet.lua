@@ -40,13 +40,13 @@ function add_iovec (p, b, length,  offset)
    p.length = p.length + length
 end
 
--- insert data to beginning of a packet.
-function insert_iovec (p, b, length,  offset)
+-- Prepend data to a packet.
+function prepend_iovec (p, b, length,  offset)
    if debug then assert(p.niovecs < C.PACKET_IOVEC_MAX, "packet iovec overflow") end
    offset = offset or 0
    if debug then assert(length + offset <= b.size) end
-   for i = 1, p.niovecs do
-      p.iovecs[i] = p.iovecs[i - 1]
+   for i = p.niovecs, 1, -1 do
+      ffi.copy(p.iovecs[i], p.iovecs[i-1], ffi.sizeof("struct packet_iovec"))
    end
    local iovec = p.iovecs[0]
    iovec.buffer = b
@@ -56,6 +56,49 @@ function insert_iovec (p, b, length,  offset)
    p.length = p.length + length
 end
 
+-- Merge all buffers into one
+-- Throws an exception if a single buffer cannot hold the entire packet
+function coalesce (p)
+   if p.niovecs == 1 then return end
+   local b = buffer.allocate()
+   assert(p.length <= b.size, "packet too big to coalesce")
+
+   local length = 0
+   for i = 0, p.niovecs - 1 do
+      local iovec = p.iovecs[i]
+      ffi.copy(b.pointer + length, iovec.buffer.pointer + iovec.offset, iovec.length)
+      buffer.free(iovec.buffer)
+      length = length + iovec.length
+   end
+   p.niovecs, p.length = 0, 0
+   add_iovec(p, b, length)
+end
+
+-- Merge all buffers into one
+-- Throws an exception if a single buffer cannot hold the entire packet
+function make_deep_copy (p)
+   assert(p.length <= b.size, "packet too big to coalesce")
+   local new_p = allocate()
+   local b = buffer.allocate()   
+   p.iovec[0].buffer = b
+
+   local length = 0
+   for i = 0, p.niovecs - 1 do
+      local iovec = p.iovecs[i]
+      ffi.copy(b.pointer + length, iovec.buffer.pointer + iovec.offset, iovec.length)
+      length = length + iovec.length
+   end
+   add_iovec(mew_p, b, length)
+   return new_p
+end
+
+function want_modify (p)
+   if p.refcount == 1 then
+      return p
+   end
+   packet.deref(p)
+   return make_deep_copy(p)
+end
 
 -- Increase the reference count for packet p by n (default n=1).
 function ref (p,  n)
@@ -93,26 +136,6 @@ function free (p)
    p.refcount       = 1
    p.fuel           = initial_fuel
    freelist.add(packets_fl, p)
-end
-
-function want_modify (p)
-   if p.refcount == 1 then
-      return p
-   end
-   local new_p = allocate()
-   for i = 0, p.niovecs - 1 do
-      local new_b = buffer.allocate()
-      local iovec = p.iovecs[i]
-      ffi.copy(
-            new_b.pointer,
-            iovec.buffer.pointer + iovec.offset,
-            iovec.length
-         )
-      add_iovec(new_p, new_b, iovec.length)
-   end
-   -- allow other app to be the only owner
-   packet.deref(p)
-   return new_p
 end
 
 module_init()

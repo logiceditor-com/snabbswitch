@@ -47,7 +47,7 @@ snabbswitch: $(LUAOBJ) $(HOBJ) $(COBJ) $(ASMOBJ)
 
 test: $(TESTMODS)
 
-test_ci: FAIL_ON_FIRST="true"
+#test_ci: FAIL_ON_FIRST="true"
 
 test_ci: $(TESTMODS)
 

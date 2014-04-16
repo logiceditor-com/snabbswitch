@@ -38,36 +38,41 @@ struct {
 ]]
 
 local HEADER_SIZE = ffi.sizeof(header_struct_ctype)
--- should be in sync with previous line
+
 local header_array_ctype = ffi.typeof("uint8_t[?]")
 local cookie_ctype = ffi.typeof("uint64_t[1]")
+local pcookie_ctype = ffi.typeof("uint64_t*")
 local address_ctype = ffi.typeof("uint64_t[2]")
 local paddress_ctype = ffi.typeof("uint64_t*")
+local plenght_ctype = ffi.typeof("int16_t*")
 
 local SRC_IP_OFFSET = ffi.offsetof(header_struct_ctype, 'src_ip')
 local DST_IP_OFFSET = ffi.offsetof(header_struct_ctype, 'dst_ip')
-local COOKIE_IP_OFFSET = ffi.offsetof(header_struct_ctype, 'cookie')
+local COOKIE_OFFSET = ffi.offsetof(header_struct_ctype, 'cookie')
+local LENGHT_OFFSET = ffi.offsetof(header_struct_ctype, 'payload_length')
 
-local header_prototype = header_array_ctype(HEADER_SIZE)
+local SESSION_COOKIE_SIZE = 12 -- 32 bit session and 64 bit cookie
+
+local header_template = header_array_ctype(HEADER_SIZE)
 
 local function prepare_header_template ()
    -- set const fields
    local offset = ffi.offsetof(header_struct_ctype, 'ethertype')
-   header_prototype[offset] = 0x86
-   header_prototype[offset + 1] = 0xDD
+   header_template[offset] = 0x86
+   header_template[offset + 1] = 0xDD
 
    offset = ffi.offsetof(header_struct_ctype, 'ethertype')
    -- first 4 bits - version
-   header_prototype[offset] = 0x60
+   header_template[offset] = 0x60
 
    offset = ffi.offsetof(header_struct_ctype, 'next_header')
-   header_prototype[19] = 0x73
+   header_template[19] = 0x73
    
    offset = ffi.offsetof(header_struct_ctype, 'session_id')
-   header_prototype[offset] = 0xFF
-   header_prototype[offset + 1] = 0xFF
-   header_prototype[offset + 2] = 0xFF
-   header_prototype[offset + 3] = 0xFF
+   header_template[offset] = 0xFF
+   header_template[offset + 1] = 0xFF
+   header_template[offset + 2] = 0xFF
+   header_template[offset + 3] = 0xFF
 end
 
 SimpleKeyedTunnel = {}
@@ -90,7 +95,7 @@ function SimpleKeyedTunnel:new (confstring)
          "remote_cookie should be 8 bytes string"
       )
    local header = header_array_ctype(HEADER_SIZE)
-   ffi.copy(header, header_prototype, HEADER_SIZE)
+   ffi.copy(header, header_template, HEADER_SIZE)
    ffi.copy(
          header + COOKIE_IP_OFFSET,
          config.local_cookie,
@@ -125,12 +130,17 @@ function SimpleKeyedTunnel:push()
    local l_in = self.input.decapsulated
    local l_out = self.output.encapsulated
    assert(l_in and l_out)
+
    while not link.empty(l_in) and not link.full(l_out) do
-      locap p = packet.want_change(link.receive(l_in))
+      local p = packet.want_change(link.receive(l_in))
       local new_b = buffer.allocate()
       ffi.copy(new_b.pointer, self.header, HEADER_SIZE)
-      -- TODO: set payload size
-      packet.insert_iovec(p, new_b, HEADER_SIZE)
+
+      -- set payload size
+      local plenght = ffi.cast(plenght_ctype, new_b.pointer + LENGHT_OFFSET)
+      plenght[0] = C.htons(SESSION_COOKIE_SIZE + p.lenght)
+
+      packet.prepend_iovec(p, new_b, HEADER_SIZE)
       link.transmit(l_out, p)
    end
 
@@ -138,12 +148,58 @@ function SimpleKeyedTunnel:push()
    l_out = self.output.decapsulated
    assert(l_in and l_out)
    while not link.empty(l_in) and not link.full(l_out) do
-      locap p = packet.want_change(link.receive(l_in))
-      -- TODO: where tunnel header is? in which iovec?
-      -- usually it will be in first one, should we support others use case?
+      local p = packet.want_change(link.receive(l_in))
+      local iovec = p.iovecs[0]
+      -- support only a whole tunnel header in first iovec at the moment
+      assert(iovec.lenght >= HEADER_SIZE)
+
+      -- match src/dst IPs and cookie
+      local drop = true
+      repeat
+         local remote_address = ffi.cast(
+               paddress_ctype,
+               iovec.buffer.pointer + iovec.offset + SRC_IP_OFFSET
+            )
+         if remote_address[0] ~= self.remote_address[0] or
+            remote_address[1] ~= self.remote_address[1]
+         then
+            break
+         end
+
+         local local_address = ffi.cast(
+               paddress_ctype,
+               iovec.buffer.pointer + iovec.offset + DST_IP_OFFSET
+            )
+         if local_address[0] ~= self.local_address[0] or
+            local_address[1] ~= self.local_address[1]
+         then
+            break
+         end
+
+         local pcookie = ffi.cast(
+               pcookie_ctype,
+               iovec.buffer.pointer + iovec.offset + COOKIE_OFFSET
+            )
+         if pcookie[0] ~= self.remote_cookie then
+            break
+         end
+
+         drop = false
+      until false
+
+      if drop then
+         -- discard packet
+         packet.deref(p)
+      else
+         iovec.offset = iovec.offset + HEADER_SIZE
+         iovec.lenght = iovec.lenght - HEADER_SIZE
+         link.transmit(l_out, p)
+      end
+
    end
 end
-prepare_header_template ()
+
+prepare_header_template()
 
 function selftest ()
    buffer.preallocate(10000)

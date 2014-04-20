@@ -3,6 +3,7 @@ module(...,package.seeall)
 local ffi = require("ffi")
 local C = ffi.C
 
+local lib    = require("core.lib")
 local freelist = require("core.freelist")
 local memory   = require("core.memory")
 local buffer   = require("core.buffer")
@@ -14,6 +15,10 @@ local packet   = require("core.packet")
 
 vring_size = C.VHOST_VRING_SIZE
 uint64_t = ffi.typeof("uint64_t")
+
+function is_tuntap_available()
+  return lib.can_write("/dev/net/tun")
+end
 
 function new (tapname)
    local vhost = ffi.new("struct vhost")

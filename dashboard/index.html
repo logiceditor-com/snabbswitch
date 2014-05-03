@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="utf-8">
+    <title>Snabb Switch Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Styles -->
+    <!-- Bootstrap CSS -->
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font awesome CSS -->
+    <link href="css/font-awesome.min.css" rel="stylesheet">
+    <!-- D3 CSS -->
+    <link href="css/d3.app.css" rel="stylesheet">
+    <!-- Theme and page CSS -->
+    <link href="css/style.css" rel="stylesheet">
+    <!-- Favicon -->
+    <link rel="shortcut icon" href="#">
+  </head>
+
+  <body>
+    <!-- navbar -->
+    <div class="navbar navbar-fixed-top bs-docs-nav" role="banner">
+      <div class="container">
+        <div class="navbar-header">
+          <button class="navbar-toggle" type="button" data-toggle="collapse" data-target=".bs-navbar-collapse">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span>
+          </button>
+        </div>
+        <nav class="collapse navbar-collapse bs-navbar-collapse" role="navigation">
+          <ul class="nav navbar-nav navbar-left">
+            <li><a href="#overview"><i class="fa fa-gears"></i>Overview</a></li>
+            <li><a href="#status"><i class="fa fa-table"></i>App Status</a></li>
+            <li><a href="#utilization"><i class="fa fa-dashboard"></i>Processor Utilization</a></li>
+            <li><a href="#traffic"><i class="fa fa-bar-chart-o"></i>Traffic</a></h5></li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+    <!-- /navbar -->
+
+    <!-- Main content starts -->
+    <div class="content">
+
+      <!-- Main bar -->
+      <div class="mainbar">
+
+        <div class="page-head">
+          <h2 class="pull-left">Snabb Switch Operations
+            <span class="page-meta" id="lastUpdated"></span>
+          </h2>
+          <div class="clearfix"></div>
+        </div>
+
+        <!-- Matter -->
+        <div class="matter">
+          <div class="container">
+            <div class="row">
+              <div class="col-md-12">
+
+              <!-- Overview -->
+              <div class="widget">
+
+                <div class="widget-head">
+                  <a class="anchor" id="overview"></a>
+                  <div class="pull-left"><i class="fa fa-gears"></i>&nbsp;Overview</div>
+                  <div class="widget-icons pull-right">
+                    <a href="#" class="wminimize"><i class="fa fa-chevron-up"></i></a>
+                  </div>
+                  <div class="clearfix"></div>
+                </div>
+
+                <div class="widget-content">
+                  <div class="padd">
+                    <!-- Graph. d3 plugin used. -->
+                    <div id="d3-graph"></div>
+                  </div>
+                </div>
+
+              </div>
+              <!-- Overview ends -->
+
+              <!-- App Status -->
+              <div class="widget">
+
+                <div class="widget-head">
+                  <a class="anchor" id="status"></a>
+                  <div class="pull-left"><i class="fa fa-table"></i>&nbsp;App Status</div>
+                  <div class="widget-icons pull-right">
+                    <a href="#" class="wminimize"><i class="fa fa-chevron-up"></i></a>
+                  </div>
+                  <div class="clearfix"></div>
+                </div>
+
+                <div class="widget-content">
+                  <div class="padd">
+                    <table class="table table-bordered" id ="dataAppTable">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Class</th>
+                          <th>Started</th>
+                          <th>Processor</th>
+                          <th colspan="2">RX packets/bytes</th>
+                          <th colspan="2">TX packets/bytes</th>
+                          <th colspan="2">Drop packets/bytes</th>
+                          <th>Log</th>
+                          <th>Diagnostics</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="clearfix"></div>
+                  <hr />
+                  <div class="padd">
+                    <table class="table table-bordered" id ="dataLinkTable">
+                      <thead>
+                        <tr>
+                          <th>Link</th>
+                          <th>Last updated</th>
+                          <th>RX bytes</th>
+                          <th>TX bytes</th>
+                          <th>Drop bytes</th>
+                          <th>RX packets</th>
+                          <th>TX packets</th>
+                          <th>Drop packets</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+
+                </div>
+              </div>
+              <!-- App Status ends -->
+
+              <!-- Processor Utilization starts -->
+              <div class="widget">
+
+                <div class="widget-head">
+                  <a class="anchor" id="utilization"></a>
+                  <div class="pull-left"><i class="fa fa-dashboard"></i>&nbsp;Processor Utilization</div>
+                  <div class="widget-icons pull-right">
+                    <a href="#utilization" class="wminimize"><i class="fa fa-chevron-up"></i></a>
+                  </div>
+                  <div class="clearfix"></div>
+                </div>
+
+                <div class="widget-content">
+                  <div class="padd">
+                    <div id="cpu-chart" class="col-md-10"></div>
+                    <div id="CPUchoices" style="list-style-type: none;" class="col-md-2"></div>
+                    <div class="clearfix"></div>
+                    <hr />
+
+                    <div class="btn-group">
+                      <div class="btn-group">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                          View
+                          <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li><a href="#utilization" onclick="cpuSum()">Sum</a></li>
+                          <li><a href="#utilization" onclick="cpuClass()">Per class</a></li>
+                          <li><a href="#utilization" onclick="cpuApp()">Per app</a></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+              <!-- Processor Utilization ends -->
+
+              <!-- Traffic starts -->
+              <div class="widget">
+
+                <div class="widget-head">
+                  <a class="anchor" id="traffic"></a>
+                  <div class="pull-left"><i class="fa fa-bar-chart-o"></i>&nbsp;Traffic</div>
+                  <div class="widget-icons pull-right">
+                    <a href="#" class="wminimize"><i class="fa fa-chevron-up"></i></a>
+                  </div>
+                  <div class="clearfix"></div>
+                </div>
+
+                <div class="widget-content" id="bottom-widget">
+                  <div class="padd">
+                    <div id="traffic-chart" class="col-md-10"></div>
+                    <div id="NetworkChoices" style="list-style-type: none;" class="col-md-2"></div>
+                    <div class="clearfix"></div>
+                    <hr />
+
+                    <!--Bar chart stuffs -->
+
+                    <div class="btn-group">
+                      <div class="btn-group">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                          View
+                          <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li><a href="#traffic" onclick="networkSum()">Sum</a></li>
+                          <li><a href="#traffic" onclick="networkClass()">Per class</a></li>
+                          <li><a href="#traffic" onclick="networkApp()">Per app</a></li>
+                        </ul>
+                      </div>
+                      <div class="btn-group">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                          Type
+                          <span class="caret"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li><a href="#traffic" onclick="networkBytes()">Bytes</a></li>
+                          <li><a href="#traffic" onclick="networkPackets()">Packets</a></li>
+                        </ul>
+                      </div>
+                      <div class="btn-group" data-toggle="buttons">
+                        <label class="btn btn-default active" onclick="switchNetworkRx()">
+                          <input type="checkbox" /> Rx
+                        </label>
+                        <label class="btn btn-default active" onclick="switchNetworkTx()">
+                          <input type="checkbox" /> Tx
+                        </label>
+                      </div>
+                    </div>
+                    <!-- /btn group -->
+                  </div>
+                  <!-- /padd -->
+                </div>
+
+              </div>
+              <!-- Traffic ends -->
+              </div>
+
+            </div>
+          </div>
+        </div><!-- Matter ends -->
+      </div><!-- Mainbar ends -->
+      <div class="clearfix"></div>
+    </div><!-- Content ends -->
+
+    <!-- Javascript files -->
+    <!-- jQuery -->
+    <script src="js/jquery.js"></script>
+    <!-- jQuery Flot -->
+    <script src="js/jquery.flot.js"></script>
+    <script src="js/jquery.flot.byte.js"></script>
+    <script src="js/jquery.flot.time.js"></script>
+    <script src="js/jquery.flot.stack.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="js/bootstrap.min.js"></script>
+    <!-- D3 -->
+    <script src="js/d3.min.js"></script>
+    <!-- Scripts for this page -->
+    <script src="js/custom.js"></script>
+    <script src="js/d3.app.js"></script>
+    <script src="js/app.js"></script>
+
+  </body>
+</html>

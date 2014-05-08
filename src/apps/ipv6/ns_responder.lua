@@ -14,7 +14,7 @@ local ipv6 = require("lib.protocol.ipv6")
 local icmp = require("lib.protocol.icmp.header")
 local ns = require("lib.protocol.icmp.nd.ns")
 
-local ns_responder = subClass(nil)
+ns_responder = subClass(nil)
 
 function ns_responder:_init_new(config)
    self._config = config
@@ -28,7 +28,9 @@ function ns_responder:_init_new(config)
 end
 
 local function process(self, dgram)
+    print(2)
    if dgram:parse(self._match) then
+    print(3)
       local eth, ipv6, icmp, ns = unpack(dgram:stack())
       local option = ns:options(dgram:payload())
       if not (#option == 1 and option[1]:type() == 1) then
@@ -37,6 +39,7 @@ local function process(self, dgram)
       end
       -- Turn this message into a solicited neighbor
       -- advertisement with target ll addr option
+      print("got NS")
       
       -- Ethernet
       eth:swap()
@@ -65,26 +68,31 @@ end
 function ns_responder:push()
    local l_in = self.input.north
    local l_out = self.output.south
-   assert(l_in and l_out)
-   while not link.empty(l_in) and not link.full(l_out) do
-      -- Pass everything on north -> south
-      link.transmit(l_out, link.receive(l_in))
+   if l_in and l_out then
+      while not link.empty(l_in) and not link.full(l_out) do
+         -- Pass everything on north -> south
+        link.transmit(l_out, link.receive(l_in))
+      end
    end
    l_in = self.input.south
    l_out = self.output.north
    local l_reply = self.output.south
    while not link.empty(l_in) and not link.full(l_out) do
       local p = link.receive(l_in)
+      print("ns_responder got a packet")
       local datagram = datagram:new(p, ethernet)
+      print(1)
       local status = process(self, datagram)
       if status == nil then
 	 -- Discard
 	 packet.deref(p)
       elseif status == true then
 	 -- Send NA back south
+       print("reply with NA")
 	 link.transmit(l_reply, p)
       else
 	 -- Send transit traffic up north
+        print("non NS packet pass up")
 	 link.transmit(l_out, p)
       end
    end

@@ -80,7 +80,8 @@ function apply_config_actions (actions, conf)
       local class = conf.apps[name].class
       local arg = conf.apps[name].arg
       local app = class:new(arg)
-      local zone = app.zone or getfenv(class.new)._NAME or name
+      --local zone = app.zone or getfenv(class.new)._NAME or name
+      local zone = app.zone or name
       app.output = {}
       app.input = {}
       new_app_table[name] = app

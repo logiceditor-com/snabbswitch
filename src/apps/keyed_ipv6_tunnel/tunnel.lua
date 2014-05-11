@@ -53,6 +53,7 @@ local plength_ctype = ffi.typeof("int16_t*")
 local psession_id_ctype = ffi.typeof("uint32_t*")
 
 local DST_MAC_OFFSET = ffi.offsetof(header_struct_ctype, 'dmac')
+local SRC_MAC_OFFSET = ffi.offsetof(header_struct_ctype, 'smac')
 local SRC_IP_OFFSET = ffi.offsetof(header_struct_ctype, 'src_ip')
 local DST_IP_OFFSET = ffi.offsetof(header_struct_ctype, 'dst_ip')
 local COOKIE_OFFSET = ffi.offsetof(header_struct_ctype, 'cookie')
@@ -110,6 +111,7 @@ function SimpleKeyedTunnel:new (confstring)
    -- optional fields:
    --   local_session, unsigned number, must fit to uint32_t
    --   default_gateway_MAC, useful for testing
+   --   local_MAC, useful for testing
    assert(
          type(config.local_cookie) == "string"
          and #config.local_cookie == 8,
@@ -147,10 +149,15 @@ function SimpleKeyedTunnel:new (confstring)
       local psession = ffi.cast(psession_id_ctype, header + SESSION_ID_OFFSET)
       psession[0] = lib.htonl(config.local_session)
    end
-   
+
    if config.default_gateway_MAC then
       local mac = assert(macaddress:new(config.default_gateway_MAC))
       ffi.copy(header + DST_MAC_OFFSET, mac.bytes, 6)
+   end
+
+   if config.local_MAC then
+      local mac = assert(macaddress:new(config.local_MAC))
+      ffi.copy(header + SRC_MAC_OFFSET, mac.bytes, 6)
    end
 
    local o =

@@ -11,6 +11,7 @@ local tlv = require("lib.protocol.icmp.nd.options.tlv")
 local nd_header = subClass(proto_header)
 
 function nd_header:options (mem, size)
+   print("options", size)
    local result = {}
    while size > 0 do
       local tlv = tlv:new_from_mem(mem, size)

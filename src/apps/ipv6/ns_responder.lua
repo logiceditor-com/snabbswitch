@@ -18,23 +18,28 @@ local ns_responder = subClass(nil)
 
 function ns_responder:_init_new(config)
    self._config = config
-   self._match = { { ethernet },
-		   { ipv6 },
-		   { icmp },
-		   { ns,
-		     function(ns)
-			return(ns:target_eq(config.local_ip))
-		     end } }
+   self._match = {
+      { ethernet },
+      { ipv6 },
+--      { icmp },
+    { icmp, function(icmp) return(icmp:type() == 135) end },
+--    { ns, function(ns) return(ns:target_eq(config.local_ip)) end }
+      { ns }
+      }
 end
 
 local function process(self, dgram)
    if dgram:parse(self._match) then
       local eth, ipv6, icmp, ns = unpack(dgram:stack())
+      print(eth, ipv6, icmp, ns)
       local option = ns:options(dgram:payload())
-      if not (#option == 1 and option[1]:type() == 1) then
-	 -- Invalid NS, ignore
-	 return nil
-      end
+      print(#option)
+      print(option[1]:type())
+--      if not (#option == 1 and option[1]:type() == 1) then
+--         -- Invalid NS, ignore
+--         print("Invalid NS, ignore")
+--         return nil
+--      end
       -- Turn this message into a solicited neighbor
       -- advertisement with target ll addr option
       
@@ -78,14 +83,16 @@ function ns_responder:push()
       local datagram = datagram:new(p, ethernet)
       local status = process(self, datagram)
       if status == nil then
-	 -- Discard
-	 packet.deref(p)
+         -- Discard
+         packet.deref(p)
       elseif status == true then
-	 -- Send NA back south
-	 link.transmit(l_reply, p)
+         -- Send NA back south
+         print("Send NA back south")
+         link.transmit(l_reply, p)
       else
-	 -- Send transit traffic up north
-	 link.transmit(l_out, p)
+         -- Send transit traffic up north
+         print("Send transit traffic up north")
+         link.transmit(l_out, p)
       end
    end
 end

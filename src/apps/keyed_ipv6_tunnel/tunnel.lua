@@ -101,6 +101,7 @@ end
 SimpleKeyedTunnel = {}
 
 function SimpleKeyedTunnel:new (confstring)
+   print(confstring)
    local config = confstring and loadstring("return " .. confstring)() or {}
    -- required fields:
    --   local_address, string, ipv6 address

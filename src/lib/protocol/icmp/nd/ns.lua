@@ -34,6 +34,8 @@ function ns:target (target)
 end
 
 function ns:target_eq (target)
+   assert(target)
+   assert(self._header.target)
    return C.memcmp(target, self._header.target, 16) == 0
 end
 
